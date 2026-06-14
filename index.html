@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>BLASTWELL</title>
+  </head>
+  <body>
+    <main id="app">
+      <section id="scene" aria-label="Plateau de jeu BLASTWELL">
+        <div id="game-over" aria-hidden="true">GAME OVER</div>
+        <div id="level-transition" class="level-transition" aria-live="polite" aria-hidden="true">
+          <span class="level-transition__label">Niveau</span>
+          <strong class="level-transition__level">2</strong>
+          <span class="level-transition__count">3</span>
+        </div>
+      </section>
+      <aside id="hud" aria-label="Informations de jeu">
+        <div class="brand">
+          <img id="brand-logo" class="brand-logo" alt="BLASTWELL" />
+        </div>
+        <dl class="stats">
+          <div>
+            <dt>Score</dt>
+            <dd id="score">0</dd>
+          </div>
+          <div>
+            <dt>Niveau</dt>
+            <dd id="level">1</dd>
+          </div>
+          <div>
+            <dt>Lignes</dt>
+            <dd id="lines">0</dd>
+          </div>
+          <div>
+            <dt>Vitesse</dt>
+            <dd id="speed">1x</dd>
+          </div>
+        </dl>
+        <button id="start-game" class="start-game" type="button">Demarrer</button>
+        <div class="next">
+          <h2>Prochaine brique</h2>
+          <div id="next-piece" aria-label="Apercu de la prochaine piece"></div>
+        </div>
+        <p id="status" class="status">Pret</p>
+        <div class="settings">
+          <span>Rotation</span>
+          <div class="segmented" id="rotation-mode" role="group" aria-label="Sens de rotation">
+            <button type="button" data-rotation="-1" aria-pressed="true">Gauche</button>
+            <button type="button" data-rotation="1" aria-pressed="false">Droite</button>
+          </div>
+        </div>
+        <div class="controls">
+          <span>←/→ deplacer</span>
+          <span>↑ tourner gauche/droite</span>
+          <span>Z rotation inverse</span>
+          <span>↓ accelerer</span>
+          <span>Espace tomber</span>
+          <span>P pause · R recommencer</span>
+        </div>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
