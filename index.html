@@ -15,10 +15,22 @@
           <strong class="level-transition__level">2</strong>
           <span class="level-transition__count">3</span>
         </div>
+        <div class="touch-hint" aria-hidden="true">Glisser pour deplacer · Toucher pour tourner</div>
+        <div id="touch-controls" class="touch-controls" aria-label="Controles tactiles">
+          <div class="touch-controls__cluster">
+            <button type="button" data-touch-action="moveLeft" aria-label="Deplacer a gauche">◀</button>
+            <button type="button" data-touch-action="moveRight" aria-label="Deplacer a droite">▶</button>
+          </div>
+          <div class="touch-controls__cluster">
+            <button type="button" data-touch-action="rotatePrimary" aria-label="Tourner la piece">↻</button>
+            <button type="button" data-touch-action="hardDrop" aria-label="Faire tomber la piece">⇊</button>
+          </div>
+        </div>
       </section>
       <aside id="hud" aria-label="Informations de jeu">
-        <div class="brand">
+        <div class="hud-header">
           <img id="brand-logo" class="brand-logo" alt="BLASTWELL" />
+          <button id="open-settings" class="settings-trigger" type="button" aria-label="Ouvrir les parametres" aria-haspopup="dialog" aria-controls="settings-dialog">⚙</button>
         </div>
         <dl class="stats">
           <div>
@@ -44,13 +56,6 @@
           <div id="next-piece" aria-label="Apercu de la prochaine piece"></div>
         </div>
         <p id="status" class="status">Pret</p>
-        <div class="settings">
-          <span>Rotation</span>
-          <div class="segmented" id="rotation-mode" role="group" aria-label="Sens de rotation">
-            <button type="button" data-rotation="-1" aria-pressed="true">Gauche</button>
-            <button type="button" data-rotation="1" aria-pressed="false">Droite</button>
-          </div>
-        </div>
         <div class="controls">
           <span>←/→ deplacer</span>
           <span>↑ tourner gauche/droite</span>
@@ -58,8 +63,37 @@
           <span>↓ accelerer</span>
           <span>Espace tomber</span>
           <span>P pause · R recommencer</span>
+          <span class="touch-help">Mobile : glisser · toucher pour tourner</span>
         </div>
       </aside>
+      <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+        <div class="settings-dialog__header">
+          <div>
+            <span class="settings-dialog__eyebrow">BLASTWELL</span>
+            <h2 id="settings-title">Parametres</h2>
+          </div>
+          <button id="close-settings" class="settings-dialog__close" type="button" aria-label="Fermer les parametres">×</button>
+        </div>
+        <div class="settings-dialog__body">
+          <fieldset class="setting-group">
+            <legend>Sens de rotation principal</legend>
+            <div class="segmented" id="rotation-mode" role="group" aria-label="Sens de rotation">
+              <button type="button" data-rotation="-1" aria-pressed="true">Gauche</button>
+              <button type="button" data-rotation="1" aria-pressed="false">Droite</button>
+            </div>
+          </fieldset>
+          <label class="setting-row" for="setting-ghost">
+            <span><strong>Piece fantome</strong><small>Afficher la position de chute</small></span>
+            <input id="setting-ghost" type="checkbox" checked />
+            <span class="toggle" aria-hidden="true"></span>
+          </label>
+          <label class="setting-row" for="setting-music">
+            <span><strong>Musique</strong><small>Les bruitages restent toujours actifs</small></span>
+            <input id="setting-music" type="checkbox" checked />
+            <span class="toggle" aria-hidden="true"></span>
+          </label>
+        </div>
+      </dialog>
     </main>
     <script type="module" src="/src/main.js"></script>
   </body>

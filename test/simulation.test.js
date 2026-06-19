@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { TetriSiloGame, hasFullLine } from "../src/simulation/game.js";
 import { LEVEL_WIDTHS, MAX_WIDTH, MIN_WIDTH, bombCountForWidth, getLevelConfig, generatePrefill } from "../src/simulation/levels.js";
 import { PIECES, PIECE_TYPES, makePiece } from "../src/simulation/pieces.js";
+import { classifyTouchGesture } from "../src/input/touchControls.js";
+import { LevelMusic } from "../src/audio/levelMusic.js";
 
 describe("TETRI-SILO simulation", () => {
   it("includes the S and Z bias tetriminoes", () => {
@@ -47,13 +49,14 @@ describe("TETRI-SILO simulation", () => {
     }
   });
 
-  it("keeps the bottom line impossible to complete with a single first piece", () => {
+  it("keeps a narrow chimney outlet in the bottom line", () => {
     for (let level = 1; level <= LEVEL_WIDTHS.length; level += 1) {
       const config = getLevelConfig(level, 4300 + level);
       const grid = generatePrefill(config);
       const emptyBottomCells = grid[config.height - 1].filter((cell) => !cell).length;
 
-      expect(emptyBottomCells).toBeGreaterThan(4);
+      expect(emptyBottomCells).toBeGreaterThanOrEqual(1);
+      expect(emptyBottomCells).toBeLessThanOrEqual(2);
     }
   });
 
@@ -86,18 +89,56 @@ describe("TETRI-SILO simulation", () => {
       expect(bombs).toHaveLength(bombCountForWidth(config.width));
       expect(bombs.length).toBeGreaterThanOrEqual(2);
       expect(bombs.length).toBeLessThanOrEqual(7);
+
+      for (let y = 0; y < config.height; y += 1) {
+        for (let x = 0; x < config.width; x += 1) {
+          if (grid[y][x]?.type !== "bomb") continue;
+          const touchesCavity = [-1, 0, 1].some((dy) =>
+            [-1, 0, 1].some((dx) => {
+              if (dx === 0 && dy === 0) return false;
+              return grid[y + dy]?.[x + dx] === null;
+            })
+          );
+          expect(touchesCavity).toBe(true);
+        }
+      }
     }
   });
 
-  it("sculpts chimney-like cavities instead of cell noise", () => {
+  it("decorates the excavated silhouette without changing gameplay cells", () => {
+    const config = getLevelConfig(5, 7331);
+    const grid = generatePrefill(config);
+    const rimBricks = grid.flat().filter((cell) => cell?.visualVariant?.startsWith("rim-"));
+
+    expect(rimBricks.length).toBeGreaterThan(10);
+    expect(rimBricks.every((cell) => cell.type === "filler")).toBe(true);
+    expect(rimBricks.every((cell) => cell.depthOffset < 0)).toBe(true);
+    expect(new Set(rimBricks.map((cell) => cell.visualVariant)).size).toBe(2);
+  });
+
+  it("sculpts an offset circular cavity with winding chimneys", () => {
     const config = getLevelConfig(3, 2024);
     const grid = generatePrefill(config);
-    const filledRows = grid.filter((row) => row.some(Boolean));
-    const openCellsByRow = filledRows.map((row) => row.filter((cell) => !cell).length);
+    const startRow = config.height - config.prefillRows;
+    const openCellsByRow = grid.slice(startRow).map((row) => row.filter((cell) => !cell).length);
+    const widestRow = openCellsByRow.indexOf(Math.max(...openCellsByRow));
+    const openXs = grid[startRow + widestRow]
+      .map((cell, x) => (!cell ? x : -1))
+      .filter((x) => x >= 0);
+    const cavityCenter = openXs.reduce((sum, x) => sum + x, 0) / openXs.length;
+    const boardCenter = (config.width - 1) / 2;
 
     expect(Math.min(...openCellsByRow)).toBeGreaterThanOrEqual(1);
-    expect(Math.max(...openCellsByRow)).toBeGreaterThan(1);
-    expect(Math.max(...openCellsByRow)).toBeLessThanOrEqual(Math.ceil(config.width * 0.42));
+    expect(Math.max(...openCellsByRow)).toBeGreaterThanOrEqual(5);
+    expect(cavityCenter).toBeGreaterThan(boardCenter);
+
+    const narrowRows = openCellsByRow.filter((count) => count <= 2);
+    expect(narrowRows.length).toBeGreaterThanOrEqual(4);
+
+    const topChimneyXs = grid.slice(startRow, startRow + 4).map((row) => row.findIndex((cell) => !cell));
+    const bottomChimneyXs = grid.slice(-4).map((row) => row.findIndex((cell) => !cell));
+    expect(new Set(topChimneyXs).size).toBeGreaterThan(1);
+    expect(new Set(bottomChimneyXs).size).toBeGreaterThan(1);
   });
 
   it("uses the fixed six-level board width sequence", () => {
@@ -115,6 +156,37 @@ describe("TETRI-SILO simulation", () => {
     expect(game.move(-1)).toBe(false);
     game.active.x = game.config.width - 4;
     expect(game.move(1)).toBe(false);
+  });
+
+  it("projects a ghost piece at the lowest valid position", () => {
+    const game = new TetriSiloGame({ seed: 4 });
+    game.grid = game.grid.map((row) => row.map(() => null));
+    game.active = { type: "O", matrix: [[1, 1], [1, 1]], x: 3, y: 0 };
+
+    const ghost = game.snapshot().ghost;
+
+    expect(ghost.y).toBe(game.config.height - 2);
+    expect(game.active.y).toBe(0);
+    expect(ghost.matrix).toEqual(game.active.matrix);
+  });
+
+  it("maps taps and swipes to touch actions", () => {
+    expect(classifyTouchGesture(4, 3, 120)).toEqual({ action: "rotatePrimary", repetitions: 1 });
+    expect(classifyTouchGesture(-82, 8, 420)).toEqual({ action: "moveLeft", repetitions: 2 });
+    expect(classifyTouchGesture(94, 12, 420)).toEqual({ action: "moveRight", repetitions: 2 });
+    expect(classifyTouchGesture(8, 110, 220)).toEqual({ action: "hardDrop", repetitions: 1 });
+    expect(classifyTouchGesture(6, 70, 520)).toEqual({ action: "softDrop", repetitions: 2 });
+  });
+
+  it("can mute music independently from sound effects", () => {
+    const music = new LevelMusic({});
+
+    music.setEnabled(false);
+    music.resume();
+    music.sync({ status: "playing", level: 1 });
+
+    expect(music.enabled).toBe(false);
+    expect(music.audio).toBeNull();
   });
 
   it("emits tick, land, and clear events for sound effects", () => {
@@ -173,6 +245,32 @@ describe("TETRI-SILO simulation", () => {
     expect(game.grid[y - 1][x]).toBeNull();
     expect(game.grid[y][x + 2]).toBeNull();
     expect(game.status).toBe("playing");
+  });
+
+  it("detonates nearby bombs as a depth-ordered chain reaction", () => {
+    const game = new TetriSiloGame({ seed: 51 });
+    game.grid = game.grid.map((row) => row.map(() => null));
+    const x = Math.floor(game.config.width / 2);
+    const row = game.config.height - 8;
+    game.grid[row] = Array(game.config.width).fill({ type: "filler" });
+    game.grid[row][x] = { type: "bomb" };
+    game.grid[row - 2][x] = { type: "bomb" };
+    game.grid[row - 4][x] = { type: "bomb" };
+    game.grid[row - 4][x + 3] = { type: "bomb" };
+    game.active = { type: "O", matrix: [[1]], x: 0, y: 0 };
+
+    game.lockPiece();
+
+    expect(game.lastClear.bombs).toEqual([
+      { x, y: row, chainDepth: 0, triggerX: x },
+      { x, y: row - 2, chainDepth: 1, triggerX: x },
+      { x, y: row - 4, chainDepth: 2, triggerX: x }
+    ]);
+
+    game.applyClear();
+    expect(game.grid[row - 1][x]).toBeNull();
+    expect(game.grid[row - 3][x]).toBeNull();
+    expect(game.grid[row - 3][x + 3]?.type).toBe("bomb");
   });
 
   it("rotates pieces when there is room", () => {

@@ -20,16 +20,26 @@ export class LevelMusic {
     this.audio = null;
     this.currentLevel = null;
     this.unlocked = false;
+    this.enabled = true;
   }
 
   resume() {
     this.unlocked = true;
-    if (this.audio && this.audio.paused) {
+    if (this.enabled && this.audio && this.audio.paused) {
       this.audio.play().catch(() => {});
     }
   }
 
+  setEnabled(enabled) {
+    this.enabled = Boolean(enabled);
+    if (!this.enabled) this.pause();
+  }
+
   sync(snapshot) {
+    if (!this.enabled) {
+      this.pause();
+      return;
+    }
     if (snapshot.status === "ready" || snapshot.status === "gameOver" || snapshot.status === "levelIntro") {
       this.stop();
       return;

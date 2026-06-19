@@ -22,6 +22,16 @@ function colorToRgb(color) {
   };
 }
 
+function mixColor(color, target, amount) {
+  const sourceRgb = colorToRgb(color);
+  const targetRgb = colorToRgb(target);
+  return (
+    Math.round(sourceRgb.r + (targetRgb.r - sourceRgb.r) * amount) << 16 |
+    Math.round(sourceRgb.g + (targetRgb.g - sourceRgb.g) * amount) << 8 |
+    Math.round(sourceRgb.b + (targetRgb.b - sourceRgb.b) * amount)
+  );
+}
+
 export class GameRenderer {
   constructor(container) {
     this.container = container;
@@ -37,6 +47,9 @@ export class GameRenderer {
     this.borderObjects = [];
     this.particles = [];
     this.bombBursts = [];
+    this.bombShockwaves = [];
+    this.cameraShakeUntil = 0;
+    this.ghostVisible = true;
     this.lastSnapshot = null;
     this.clearAnimation = null;
     this.clock = new THREE.Clock();
@@ -59,6 +72,12 @@ export class GameRenderer {
       color: 0x351813,
       transparent: true,
       opacity: 0.72
+    });
+    this.ghostEdgeMaterial = new THREE.LineBasicMaterial({
+      color: 0xffd8bd,
+      transparent: true,
+      opacity: 0.58,
+      depthWrite: false
     });
     this.borderMaterial = new THREE.MeshStandardMaterial({
       color: 0x211c18,
@@ -89,6 +108,14 @@ export class GameRenderer {
       map: this.createBombBadgeTexture(),
       transparent: true,
       depthWrite: false
+    });
+    this.bombRadiusMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff9b54,
+      transparent: true,
+      opacity: 0.1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide
     });
     this.materials = new Map();
 
@@ -161,10 +188,16 @@ export class GameRenderer {
     return plane;
   }
 
-  getMaterial(type) {
-    if (this.materials.has(type)) return this.materials.get(type);
+  getMaterial(type, variant = "default") {
+    const materialKey = `${type}:${variant}`;
+    if (this.materials.has(materialKey)) return this.materials.get(materialKey);
 
-    const color = PIECE_COLORS[type] ?? PIECE_COLORS.filler;
+    const baseColor = PIECE_COLORS[type] ?? PIECE_COLORS.filler;
+    const color = variant === "rim-dark"
+      ? mixColor(baseColor, 0x351f1b, 0.3)
+      : variant === "rim-light"
+        ? mixColor(baseColor, 0xd69a7d, 0.24)
+        : baseColor;
     if (type === "bomb") {
       const { colorCanvas, bumpCanvas } = this.createBombCanvases();
       const texture = new THREE.CanvasTexture(colorCanvas);
@@ -180,7 +213,7 @@ export class GameRenderer {
         emissive: 0x3e0d07,
         emissiveIntensity: 0.45
       });
-      this.materials.set(type, material);
+      this.materials.set(materialKey, material);
       return material;
     }
 
@@ -198,7 +231,24 @@ export class GameRenderer {
       roughness: 0.86,
       metalness: 0.01
     });
-    this.materials.set(type, material);
+    this.materials.set(materialKey, material);
+    return material;
+  }
+
+  getGhostMaterial(type) {
+    const materialKey = `ghost:${type}`;
+    if (this.materials.has(materialKey)) return this.materials.get(materialKey);
+    const material = new THREE.MeshStandardMaterial({
+      color: mixColor(PIECE_COLORS[type] ?? PIECE_COLORS.filler, 0xffd9c2, 0.42),
+      transparent: true,
+      opacity: 0.22,
+      roughness: 0.7,
+      metalness: 0,
+      emissive: 0x5a241b,
+      emissiveIntensity: 0.22,
+      depthWrite: false
+    });
+    this.materials.set(materialKey, material);
     return material;
   }
 
@@ -417,6 +467,10 @@ export class GameRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
+  setGhostVisible(visible) {
+    this.ghostVisible = Boolean(visible);
+  }
+
   boardX(x, snapshot) {
     const offset = (MAX_WIDTH - snapshot.width) / 2;
     return offset + x - MAX_WIDTH / 2 + 0.5;
@@ -436,7 +490,32 @@ export class GameRenderer {
     for (let y = 0; y < snapshot.height; y += 1) {
       for (let x = 0; x < snapshot.width; x += 1) {
         const cell = snapshot.grid[y][x];
-        if (cell) desired.set(`grid:${x}:${y}`, { x, y, type: cell.type });
+        if (cell) {
+          const emptyCellsInRow = snapshot.grid[y].filter((rowCell) => !rowCell).length;
+          desired.set(`grid:${x}:${y}`, {
+            x,
+            y,
+            type: cell.type,
+            visualVariant: cell.visualVariant ?? "default",
+            depthOffset: cell.depthOffset ?? 0,
+            bombAlert: cell.type === "bomb" && emptyCellsInRow === 1
+          });
+        }
+      }
+    }
+
+    if (this.ghostVisible && snapshot.ghost) {
+      for (const cell of cellsFor(snapshot.ghost)) {
+        if (cell.y >= 0) {
+          desired.set(`ghost:${cell.x}:${cell.y}`, {
+            x: cell.x,
+            y: cell.y,
+            type: snapshot.ghost.type,
+            visualVariant: "default",
+            depthOffset: 0.06,
+            isGhost: true
+          });
+        }
       }
     }
 
@@ -446,7 +525,9 @@ export class GameRenderer {
           desired.set(`active:${cell.x}:${cell.y}`, {
             x: cell.x,
             y: cell.y,
-            type: snapshot.active.type
+            type: snapshot.active.type,
+            visualVariant: "default",
+            depthOffset: 0
           });
         }
       }
@@ -461,44 +542,67 @@ export class GameRenderer {
 
     for (const [key, cell] of desired) {
       let block = this.blocks.get(key);
-      if (block && block.userData.type !== cell.type) {
+      const styleKey = `${cell.type}:${cell.visualVariant}:${cell.isGhost ? "ghost" : "solid"}`;
+      if (block && block.userData.styleKey !== styleKey) {
         this.boardGroup.remove(block);
         this.blocks.delete(key);
         block = null;
       }
       if (!block) {
-        block = this.createBlock(cell.type);
+        block = this.createBlock(cell.type, cell.visualVariant, cell.isGhost);
         block.userData.type = cell.type;
+        block.userData.styleKey = styleKey;
         this.boardGroup.add(block);
         this.blocks.set(key, block);
       }
       block.visible = true;
       block.userData.grid = { x: cell.x, y: cell.y };
-      const basePosition = this.boardPosition(cell.x, cell.y, snapshot, key.startsWith("active") ? 0.14 : 0);
+      const basePosition = this.boardPosition(
+        cell.x,
+        cell.y,
+        snapshot,
+        key.startsWith("active") ? 0.14 : cell.depthOffset
+      );
       block.userData.basePosition = basePosition;
       block.position.copy(basePosition);
       block.rotation.set(0, 0, 0);
       block.scale.setScalar(1);
-      this.updateBombPulse(block);
+      this.updateBombPulse(block, cell.bombAlert);
     }
   }
 
-  createBlock(type) {
+  createBlock(type, visualVariant = "default", isGhost = false) {
     const group = new THREE.Group();
 
-    const shadow = new THREE.Mesh(this.shadowGeometry, this.shadowMaterial);
-    shadow.position.set(0.12, -0.14, -0.045);
-    group.add(shadow);
+    if (!isGhost) {
+      const shadow = new THREE.Mesh(this.shadowGeometry, this.shadowMaterial);
+      shadow.position.set(0.12, -0.14, -0.045);
+      group.add(shadow);
+    }
 
-    const cube = new THREE.Mesh(this.blockGeometry, this.getMaterial(type));
+    const cube = new THREE.Mesh(
+      this.blockGeometry,
+      isGhost ? this.getGhostMaterial(type) : this.getMaterial(type, visualVariant)
+    );
     cube.position.z = 0;
     group.add(cube);
 
-    const edges = new THREE.LineSegments(this.edgeGeometry, this.edgeMaterial);
+    const edges = new THREE.LineSegments(
+      this.edgeGeometry,
+      isGhost ? this.ghostEdgeMaterial : this.edgeMaterial
+    );
     edges.position.z = 0.003;
     group.add(edges);
 
     if (type === "bomb") {
+      const radius = new THREE.Mesh(
+        new THREE.RingGeometry(1.72, 2.04, 48),
+        this.bombRadiusMaterial.clone()
+      );
+      radius.position.set(0, 0, BLOCK_DEPTH + 0.055);
+      radius.userData.isBombRadius = true;
+      group.add(radius);
+
       const halo = new THREE.Mesh(
         new THREE.PlaneGeometry(1.55, 1.55),
         this.bombHaloMaterial.clone()
@@ -589,8 +693,13 @@ export class GameRenderer {
     this.camera.top = viewHeight / 2;
     this.camera.bottom = -viewHeight / 2;
     this.camera.updateProjectionMatrix();
-    this.camera.position.set(0, -6.4, 38);
-    this.camera.lookAt(0, 0, 0);
+    const now = performance.now();
+    const shakeRemaining = Math.max(0, this.cameraShakeUntil - now);
+    const shakeStrength = shakeRemaining > 0 ? (shakeRemaining / 360) * 0.13 : 0;
+    const shakeX = Math.sin(now * 0.08) * shakeStrength;
+    const shakeY = Math.cos(now * 0.105) * shakeStrength;
+    this.camera.position.set(shakeX, -6.4 + shakeY, 38);
+    this.camera.lookAt(shakeX, shakeY, 0);
     this.backgroundPlane.scale.setScalar(Math.max(1, viewHeight / 20));
   }
 
@@ -602,13 +711,19 @@ export class GameRenderer {
     this.syncBlocks(snapshot);
     this.syncBorders(snapshot);
     this.lastSnapshot = snapshot;
+    const bombs = snapshot.lastClear?.bombs ?? [];
+    const lineDuration = 62 * snapshot.width + 520;
+    const lastBombTrigger = bombs.reduce(
+      (latest, bomb) => Math.max(latest, bomb.triggerX * 62 + bomb.chainDepth * 190),
+      0
+    );
     this.clearAnimation = {
       rows: new Set(rows),
-      bombs: snapshot.lastClear?.bombs ?? [],
+      bombs,
       onDone,
       onBomb,
       start: performance.now(),
-      duration: 62 * snapshot.width + 520,
+      duration: Math.max(lineDuration, lastBombTrigger + 620),
       touched: new Set(),
       detonatedBombs: new Set()
     };
@@ -649,7 +764,8 @@ export class GameRenderer {
 
     for (const bomb of bombs) {
       const key = `${bomb.x}:${bomb.y}`;
-      if (bomb.x <= maxColumn && rows.has(bomb.y) && !detonatedBombs.has(key)) {
+      const triggerTime = bomb.triggerX * columnDelay + bomb.chainDepth * 190;
+      if (elapsed >= triggerTime && !detonatedBombs.has(key)) {
         detonatedBombs.add(key);
         this.spawnBombBurst(bomb, this.lastSnapshot);
         onBomb?.(bomb);
@@ -658,6 +774,7 @@ export class GameRenderer {
 
     this.updateDust(now);
     this.updateBombBursts(now);
+    this.updateBombShockwaves(now);
 
     if (elapsed >= duration) {
       this.clearAnimation = null;
@@ -667,13 +784,18 @@ export class GameRenderer {
     }
   }
 
-  updateBombPulse(block) {
+  updateBombPulse(block, isAlert = false) {
     if (block.children.length === 0) return;
-    const pulse = 0.5 + Math.sin(performance.now() * 0.006) * 0.5;
+    const speed = isAlert ? 0.014 : 0.006;
+    const pulse = 0.5 + Math.sin(performance.now() * speed) * 0.5;
     for (const child of block.children) {
-      if (child.userData.isBombHalo) {
-        child.material.opacity = 0.24 + pulse * 0.42;
-        const scale = 0.9 + pulse * 0.14;
+      if (child.userData.isBombRadius) {
+        child.material.opacity = isAlert ? 0.2 + pulse * 0.22 : 0.055 + pulse * 0.055;
+        const scale = 0.97 + pulse * (isAlert ? 0.08 : 0.025);
+        child.scale.set(scale, scale, 1);
+      } else if (child.userData.isBombHalo) {
+        child.material.opacity = (isAlert ? 0.38 : 0.24) + pulse * (isAlert ? 0.52 : 0.42);
+        const scale = 0.9 + pulse * (isAlert ? 0.24 : 0.14);
         child.scale.set(scale, scale, 1);
       } else if (child.userData.isBombBadge) {
         const scale = 0.95 + pulse * 0.05;
@@ -731,6 +853,32 @@ export class GameRenderer {
 
   spawnBombBurst(bomb, snapshot) {
     const center = this.boardPosition(bomb.x, bomb.y, snapshot, 1.15);
+    const now = performance.now();
+    this.cameraShakeUntil = Math.max(this.cameraShakeUntil, now + 360);
+
+    const wave = new THREE.Mesh(
+      new THREE.RingGeometry(0.72, 1, 48),
+      new THREE.MeshBasicMaterial({
+        color: 0xffa052,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      })
+    );
+    wave.position.copy(center);
+    this.boardGroup.add(wave);
+
+    const flash = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.4, 1.4),
+      this.bombHaloMaterial.clone()
+    );
+    flash.position.copy(center);
+    flash.position.z += 0.03;
+    flash.material.opacity = 0.95;
+    this.boardGroup.add(flash);
+    this.bombShockwaves.push({ wave, flash, start: now, life: 520 });
 
     for (let i = 0; i < 26; i += 1) {
       const angle = (i / 26) * Math.PI * 2;
@@ -771,6 +919,18 @@ export class GameRenderer {
     }
   }
 
+  updateBombShockwaves(now) {
+    for (const shockwave of this.bombShockwaves) {
+      const t = Math.min(1, (now - shockwave.start) / shockwave.life);
+      const waveScale = 0.45 + easeOutCubic(t) * 2.25;
+      shockwave.wave.scale.set(waveScale, waveScale, 1);
+      shockwave.wave.material.opacity = Math.max(0, 0.9 * (1 - t));
+      const flashScale = 0.7 + t * 1.7;
+      shockwave.flash.scale.set(flashScale, flashScale, 1);
+      shockwave.flash.material.opacity = Math.max(0, 0.95 * (1 - t * 2.2));
+    }
+  }
+
   clearBombBursts() {
     for (const particle of this.bombBursts) {
       this.boardGroup.remove(particle);
@@ -778,12 +938,21 @@ export class GameRenderer {
       particle.material.dispose();
     }
     this.bombBursts = [];
+    for (const shockwave of this.bombShockwaves) {
+      this.boardGroup.remove(shockwave.wave, shockwave.flash);
+      shockwave.wave.geometry.dispose();
+      shockwave.wave.material.dispose();
+      shockwave.flash.geometry.dispose();
+      shockwave.flash.material.dispose();
+    }
+    this.bombShockwaves = [];
   }
 
   dispose() {
     this.renderer.dispose();
     this.blockGeometry.dispose();
     this.edgeGeometry.dispose();
+    this.ghostEdgeMaterial.dispose();
     this.shadowGeometry.dispose();
     this.shadowMaterial.dispose();
     this.edgeMaterial.dispose();
@@ -794,6 +963,7 @@ export class GameRenderer {
     this.bombHaloMaterial.dispose();
     this.bombBadgeMaterial.map?.dispose();
     this.bombBadgeMaterial.dispose();
+    this.bombRadiusMaterial.dispose();
     this.clearBombBursts();
     for (const material of this.materials.values()) {
       material.map?.dispose();

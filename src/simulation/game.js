@@ -152,7 +152,7 @@ export class TetriSiloGame {
     }
 
     const rows = this.findFullRows();
-    const bombs = this.findBombsInRows(rows);
+    const bombs = this.findBombChain(this.findBombsInRows(rows));
     this.pushEvent("land", {
       pieceType: this.active.type,
       rows: rows.length
@@ -192,11 +192,41 @@ export class TetriSiloGame {
     for (const y of rowSet) {
       for (let x = 0; x < this.config.width; x += 1) {
         if (this.grid[y][x]?.type === "bomb") {
-          bombs.push({ x, y });
+          bombs.push({ x, y, chainDepth: 0, triggerX: x });
         }
       }
     }
     return bombs;
+  }
+
+  findBombChain(initialBombs) {
+    const chain = initialBombs.map((bomb) => ({ ...bomb }));
+    const queued = [...chain];
+    const seen = new Set(chain.map((bomb) => `${bomb.x}:${bomb.y}`));
+
+    while (queued.length > 0) {
+      const source = queued.shift();
+      for (let y = Math.max(0, source.y - this.bombRadius); y <= Math.min(this.config.height - 1, source.y + this.bombRadius); y += 1) {
+        for (let x = Math.max(0, source.x - this.bombRadius); x <= Math.min(this.config.width - 1, source.x + this.bombRadius); x += 1) {
+          const key = `${x}:${y}`;
+          if (seen.has(key) || this.grid[y][x]?.type !== "bomb") continue;
+          const distance = Math.hypot(x - source.x, y - source.y);
+          if (distance > this.bombRadius) continue;
+
+          const bomb = {
+            x,
+            y,
+            chainDepth: source.chainDepth + 1,
+            triggerX: source.triggerX
+          };
+          seen.add(key);
+          chain.push(bomb);
+          queued.push(bomb);
+        }
+      }
+    }
+
+    return chain;
   }
 
   destroyedBottomLine(rows, bombs) {
@@ -213,7 +243,13 @@ export class TetriSiloGame {
       Array(this.config.width).fill(null)
     );
     this.grid = [...newRows, ...remaining];
-    this.applyBombExplosions(this.lastClear.bombs ?? []);
+    const adjustedBombs = (this.lastClear.bombs ?? []).map((bomb) => ({
+      ...bomb,
+      y: this.lastClear.rows.includes(bomb.y)
+        ? bomb.y
+        : bomb.y + this.lastClear.rows.filter((row) => row > bomb.y).length
+    }));
+    this.applyBombExplosions(adjustedBombs);
 
     if (this.lastClear.bottomLineDestroyed) {
       this.prepareLevel(this.level + 1, "levelIntro");
@@ -299,7 +335,20 @@ export class TetriSiloGame {
     return 2;
   }
 
+  get ghostPiece() {
+    if (!this.active || (this.status !== "playing" && this.status !== "paused")) return null;
+    const ghost = {
+      ...this.active,
+      matrix: this.active.matrix.map((row) => [...row])
+    };
+    while (this.canPlace({ ...ghost, y: ghost.y + 1 })) {
+      ghost.y += 1;
+    }
+    return ghost.y === this.active.y ? null : ghost;
+  }
+
   snapshot() {
+    const ghost = this.ghostPiece;
     return {
       grid: this.grid.map((row) => row.map((cell) => (cell ? { ...cell } : null))),
       active: this.active
@@ -308,6 +357,14 @@ export class TetriSiloGame {
             x: this.active.x,
             y: this.active.y,
             matrix: this.active.matrix.map((row) => [...row])
+          }
+        : null,
+      ghost: ghost
+        ? {
+            type: ghost.type,
+            x: ghost.x,
+            y: ghost.y,
+            matrix: ghost.matrix.map((row) => [...row])
           }
         : null,
       nextType: this.nextType,

@@ -42,6 +42,9 @@ export function bindKeyboard(onAction) {
   window.addEventListener("keyup", onKeyUp);
 
   return {
+    getPrimaryRotationAction() {
+      return rotationDirection > 0 ? "rotateCW" : "rotateCCW";
+    },
     setRotationDirection(direction) {
       rotationDirection = direction;
     },
