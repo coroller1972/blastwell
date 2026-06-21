@@ -6,12 +6,13 @@ import { GameRenderer } from "./render/gameRenderer.js";
 import { Hud } from "./ui/hud.js";
 import { LevelTransition } from "./ui/levelTransition.js";
 import { SoundFx } from "./audio/soundFx.js";
-import { LevelMusic } from "./audio/levelMusic.js";
+import { LEVEL_TRACKS, LevelMusic } from "./audio/levelMusic.js";
 import blastwellLogoUrl from "./assets/blastwell-logo.png";
 
 const sceneEl = document.querySelector("#scene");
 document.querySelector("#brand-logo").src = blastwellLogoUrl;
-const game = new TetriSiloGame({ autoStart: false });
+const campaignLevelCount = Object.values(LEVEL_TRACKS).filter(Boolean).length;
+const game = new TetriSiloGame({ autoStart: false, maxLevel: campaignLevelCount });
 const renderer = new GameRenderer(sceneEl);
 const hud = new Hud();
 const levelTransition = new LevelTransition(document.querySelector("#level-transition"));
@@ -19,6 +20,7 @@ const soundFx = new SoundFx();
 const levelMusic = new LevelMusic();
 const rotationButtons = [...document.querySelectorAll("[data-rotation]")];
 const startButton = document.querySelector("#start-game");
+const restartCampaignButton = document.querySelector("#restart-campaign");
 const settingsDialog = document.querySelector("#settings-dialog");
 const openSettingsButton = document.querySelector("#open-settings");
 const closeSettingsButton = document.querySelector("#close-settings");
@@ -78,7 +80,7 @@ const touchControls = bindTouchControls(
   () => keyboard.getPrimaryRotationAction()
 );
 
-startButton.addEventListener("click", () => {
+const startCampaign = () => {
   soundFx.resume();
   levelMusic.resume();
   levelTransition.cancel();
@@ -86,7 +88,11 @@ startButton.addEventListener("click", () => {
   levelMusic.sync(game.snapshot());
   transitionLevel = null;
   clearRowsKey = "";
-});
+  sceneEl.focus({ preventScroll: true });
+};
+
+startButton.addEventListener("click", startCampaign);
+restartCampaignButton.addEventListener("click", startCampaign);
 
 for (const button of rotationButtons) {
   button.setAttribute("aria-pressed", String(Number(button.dataset.rotation) === settings.rotationDirection));

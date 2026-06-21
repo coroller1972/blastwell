@@ -4,6 +4,7 @@ import level3Url from "../assets/audio/level_3.mp3";
 import level4Url from "../assets/audio/level_4.mp3";
 import level5Url from "../assets/audio/level_5.mp3";
 import level6Url from "../assets/audio/level_6.mp3";
+import level7Url from "../assets/audio/level_7.mp3";
 
 export const LEVEL_TRACKS = {
   1: level1Url,
@@ -12,6 +13,7 @@ export const LEVEL_TRACKS = {
   4: level4Url,
   5: level5Url,
   6: level6Url,
+  7: level7Url,
 };
 
 export class LevelMusic {
@@ -40,7 +42,7 @@ export class LevelMusic {
       this.pause();
       return;
     }
-    if (snapshot.status === "ready" || snapshot.status === "gameOver" || snapshot.status === "levelIntro") {
+    if (snapshot.status === "ready" || snapshot.status === "gameOver" || snapshot.status === "completed" || snapshot.status === "levelIntro") {
       this.stop();
       return;
     }

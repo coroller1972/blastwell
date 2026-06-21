@@ -19,6 +19,17 @@ describe("TETRI-SILO simulation", () => {
     expect(PIECE_TYPES).toContain("S");
   });
 
+  it("distributes every tetrimino exactly once per 7-bag", () => {
+    const game = new TetriSiloGame({ autoStart: false, random: () => 0.42 });
+    game._bag = [];
+
+    const draws = Array.from({ length: 14 }, () => game.pickType());
+    const expectedBag = [...PIECE_TYPES].sort();
+
+    expect(draws.slice(0, 7).sort()).toEqual(expectedBag);
+    expect(draws.slice(7, 14).sort()).toEqual(expectedBag);
+  });
+
   it("centers the S and Z pieces when spawning", () => {
     expect(makePiece("Z", 9)).toMatchObject({ type: "Z", x: 3, y: -1 });
     expect(makePiece("S", 9)).toMatchObject({ type: "S", x: 3, y: -1 });
@@ -344,6 +355,22 @@ describe("TETRI-SILO simulation", () => {
     expect(game.active).toBeTruthy();
   });
 
+  it("completes the campaign after destroying the last tracked level", () => {
+    const game = new TetriSiloGame({ seed: 12, level: 1, maxLevel: 1 });
+    game.grid = game.grid.map((row) => row.map(() => null));
+    const bottom = game.config.height - 1;
+    game.grid[bottom] = Array(game.config.width).fill({ type: "filler" });
+    game.active = { type: "O", matrix: [[1]], x: 0, y: 0 };
+
+    game.lockPiece();
+    game.applyClear();
+
+    expect(game.status).toBe("completed");
+    expect(game.level).toBe(1);
+    expect(game.active).toBeNull();
+    expect(game.drainEvents().map((event) => event.type)).toContain("campaignComplete");
+  });
+
   it("advances level after multiple lines are destroyed including the bottom line", () => {
     const game = new TetriSiloGame({ seed: 12 });
     game.grid = game.grid.map((row) => row.map(() => null));
@@ -361,7 +388,7 @@ describe("TETRI-SILO simulation", () => {
     expect(game.status).toBe("levelIntro");
   });
 
-  it("advances level when a bomb blast reaches the bottom line", () => {
+  it("does not advance level when a bomb blast reaches the bottom line", () => {
     const game = new TetriSiloGame({ seed: 12 });
     game.grid = game.grid.map((row) => row.map(() => null));
     const row = game.config.height - 3;
@@ -371,10 +398,10 @@ describe("TETRI-SILO simulation", () => {
 
     game.lockPiece();
 
-    expect(game.lastClear.bottomLineDestroyed).toBe(true);
+    expect(game.lastClear.bottomLineDestroyed).toBe(false);
     game.applyClear();
-    expect(game.level).toBe(2);
-    expect(game.status).toBe("levelIntro");
+    expect(game.level).toBe(1);
+    expect(game.status).toBe("playing");
   });
 
   it("removes completed rows after the clear animation finishes", () => {

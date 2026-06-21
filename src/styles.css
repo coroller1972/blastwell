@@ -80,6 +80,76 @@ body {
   transform: translate(-50%, -50%) scale(1);
 }
 
+.game-complete {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  justify-items: center;
+  width: min(520px, calc(100% - 36px));
+  padding: clamp(26px, 5vw, 46px);
+  border: 2px solid rgba(255, 219, 188, 0.48);
+  border-radius: 14px;
+  color: #fff4e8;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(232, 137, 84, 0.3), transparent 55%),
+    linear-gradient(145deg, rgba(91, 42, 31, 0.96), rgba(28, 18, 15, 0.97));
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.62), inset 0 0 42px rgba(211, 105, 70, 0.14);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.88);
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.game-complete.visible {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.game-complete__eyebrow {
+  color: #e3a486;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.game-complete h1 {
+  margin: 7px 0 2px;
+  font-size: clamp(3.4rem, 10vw, 7rem);
+  font-weight: 950;
+  line-height: 0.92;
+  letter-spacing: 0.06em;
+  text-shadow: 0 6px 0 rgba(63, 22, 16, 0.9), 0 0 30px rgba(255, 157, 96, 0.25);
+}
+
+.game-complete p {
+  margin: 14px 0 24px;
+  color: #d8c0b2;
+  text-align: center;
+}
+
+.game-complete button {
+  min-width: 190px;
+  padding: 13px 22px;
+  border: 1px solid rgba(255, 238, 222, 0.38);
+  border-radius: 8px;
+  color: #2c1712;
+  background: linear-gradient(135deg, #efbea1, #bd7662);
+  box-shadow: inset 0 -3px 0 rgba(76, 31, 25, 0.25), 0 10px 28px rgba(0, 0, 0, 0.28);
+  font: 900 1rem/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.game-complete button:focus-visible {
+  outline: 3px solid #ffe0ca;
+  outline-offset: 4px;
+}
+
 .level-transition {
   position: absolute;
   top: 50%;

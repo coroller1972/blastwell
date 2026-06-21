@@ -8,8 +8,14 @@
   </head>
   <body>
     <main id="app">
-      <section id="scene" aria-label="Plateau de jeu BLASTWELL">
+      <section id="scene" tabindex="-1" aria-label="Plateau de jeu BLASTWELL">
         <div id="game-over" aria-hidden="true">GAME OVER</div>
+        <div id="game-complete" class="game-complete" role="dialog" aria-modal="true" aria-labelledby="game-complete-title" aria-hidden="true">
+          <span class="game-complete__eyebrow">Campagne terminee</span>
+          <h1 id="game-complete-title">THE END</h1>
+          <p>Tous les niveaux ont ete detruits.</p>
+          <button id="restart-campaign" type="button">Recommencer</button>
+        </div>
         <div id="level-transition" class="level-transition" aria-live="polite" aria-hidden="true">
           <span class="level-transition__label">Niveau</span>
           <strong class="level-transition__level">2</strong>

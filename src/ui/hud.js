@@ -9,7 +9,11 @@ export class Hud {
     this.status = document.querySelector("#status");
     this.nextPiece = document.querySelector("#next-piece");
     this.gameOver = document.querySelector("#game-over");
+    this.gameComplete = document.querySelector("#game-complete");
+    this.restartCampaign = document.querySelector("#restart-campaign");
+    this.hud = document.querySelector("#hud");
     this.startButton = document.querySelector("#start-game");
+    this.previousStatus = null;
   }
 
   update(snapshot) {
@@ -20,8 +24,15 @@ export class Hud {
     this.status.textContent = this.statusText(snapshot.status);
     this.gameOver.classList.toggle("visible", snapshot.status === "gameOver");
     this.gameOver.setAttribute("aria-hidden", String(snapshot.status !== "gameOver"));
+    this.gameComplete.classList.toggle("visible", snapshot.status === "completed");
+    this.gameComplete.setAttribute("aria-hidden", String(snapshot.status !== "completed"));
+    this.hud.inert = snapshot.status === "completed";
+    if (snapshot.status === "completed" && this.previousStatus !== "completed") {
+      this.restartCampaign.focus();
+    }
     this.updateStartButton(snapshot.status);
     this.renderNext(snapshot.nextType);
+    this.previousStatus = snapshot.status;
   }
 
   statusText(status) {
@@ -30,13 +41,14 @@ export class Hud {
     if (status === "clearing") return "Explosion de ligne";
     if (status === "levelIntro") return "Nouveau niveau";
     if (status === "gameOver") return "Partie terminee - R pour recommencer";
+    if (status === "completed") return "Campagne terminee";
     return "En jeu";
   }
 
   updateStartButton(status) {
     const gameInProgress = status === "playing" || status === "clearing" || status === "paused" || status === "levelIntro";
     this.startButton.disabled = gameInProgress;
-    this.startButton.textContent = status === "gameOver" ? "Rejouer" : gameInProgress ? "Partie en cours" : "Demarrer";
+    this.startButton.textContent = status === "gameOver" || status === "completed" ? "Recommencer" : gameInProgress ? "Partie en cours" : "Demarrer";
   }
 
   renderNext(type) {

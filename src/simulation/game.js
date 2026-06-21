@@ -1,4 +1,4 @@
-import { getLevelConfig, generatePrefill, hasFullLine } from "./levels.js";
+import { LEVEL_WIDTHS, getLevelConfig, generatePrefill, hasFullLine } from "./levels.js";
 import { PIECE_TYPES, cellsFor, makePiece, rotateMatrix } from "./pieces.js";
 
 const SCORE_TABLE = {
@@ -12,15 +12,17 @@ export class TetriSiloGame {
   constructor(options = {}) {
     this.seed = options.seed ?? 1337;
     this.level = options.level ?? 1;
+    this.maxLevel = Math.max(1, options.maxLevel ?? LEVEL_WIDTHS.length);
     this.score = 0;
     this.totalLines = 0;
     this.levelLines = 0;
     this.status = "playing";
     this.lastClear = null;
     this.events = [];
-    this._rngSeed = this.seed;
+    this.random = options.random ?? Math.random;
     this._dropAccumulator = 0;
     this._spawnQueue = [];
+    this._bag = [];
     if (options.autoStart === false) {
       this.prepareLevel(this.level, "ready");
     } else {
@@ -33,7 +35,7 @@ export class TetriSiloGame {
     this.config = getLevelConfig(level, this.seed + level * 97);
     this.grid = generatePrefill(this.config);
     this.active = null;
-    this.nextType = this.pickType();
+    this.nextType ??= this.pickType();
     this.status = status;
     this.lastClear = null;
     this.levelLines = 0;
@@ -56,7 +58,6 @@ export class TetriSiloGame {
     this.score = 0;
     this.totalLines = 0;
     this.levelLines = 0;
-    this._rngSeed = this.seed;
     this._spawnQueue = [];
     this.prepareLevel(1, "levelIntro");
     this.pushEvent("levelIntro", { level: this.level });
@@ -66,8 +67,14 @@ export class TetriSiloGame {
     if (this._spawnQueue.length > 0) {
       return this._spawnQueue.shift();
     }
-    this._rngSeed = (this._rngSeed * 1103515245 + 12345) & 0x7fffffff;
-    return PIECE_TYPES[this._rngSeed % PIECE_TYPES.length];
+    if (this._bag.length === 0) {
+      this._bag = [...PIECE_TYPES];
+      for (let index = this._bag.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(this.random() * (index + 1));
+        [this._bag[index], this._bag[swapIndex]] = [this._bag[swapIndex], this._bag[index]];
+      }
+    }
+    return this._bag.shift();
   }
 
   queuePieces(types) {
@@ -158,7 +165,7 @@ export class TetriSiloGame {
       rows: rows.length
     });
 
-    const bottomLineDestroyed = this.destroyedBottomLine(rows, bombs);
+    const bottomLineDestroyed = this.destroyedBottomLine(rows);
     if (rows.length > 0) {
       this.score += SCORE_TABLE[rows.length] ?? rows.length * 30;
       this.totalLines += rows.length;
@@ -229,9 +236,9 @@ export class TetriSiloGame {
     return chain;
   }
 
-  destroyedBottomLine(rows, bombs) {
+  destroyedBottomLine(rows) {
     const bottom = this.config.height - 1;
-    return rows.includes(bottom) || bombs.some((bomb) => bomb.y + this.bombRadius >= bottom);
+    return rows.includes(bottom);
   }
 
   applyClear() {
@@ -252,6 +259,17 @@ export class TetriSiloGame {
     this.applyBombExplosions(adjustedBombs);
 
     if (this.lastClear.bottomLineDestroyed) {
+      if (this.level >= this.maxLevel) {
+        this.status = "completed";
+        this.active = null;
+        this.lastClear = null;
+        this.pushEvent("campaignComplete", {
+          level: this.level,
+          score: this.score,
+          totalLines: this.totalLines
+        });
+        return;
+      }
       this.prepareLevel(this.level + 1, "levelIntro");
       this.pushEvent("levelIntro", { level: this.level });
       return;
@@ -372,6 +390,7 @@ export class TetriSiloGame {
       height: this.config.height,
       score: this.score,
       level: this.level,
+      maxLevel: this.maxLevel,
       totalLines: this.totalLines,
       levelLines: this.levelLines,
       status: this.status,
